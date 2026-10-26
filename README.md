@@ -1,6 +1,6 @@
-# Hisaab
+# Spendly
 
-**Hisaab** (हिसाब — "keeping accounts", as in *hisaab barabar*: settled up) is a clean, dark-mode-first Android app to track expenses and income, split bills with friends, and keep tabs on who owes you — all stored privately on your phone.
+**Spendly** is a clean, dark-mode-first Android expense tracker: log expenses and income, split bills with friends, and keep tabs on who owes you — all stored privately on your phone.
 
 ## Features
 
