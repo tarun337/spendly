@@ -2,6 +2,8 @@
 
 **Spendly** is a clean, dark-mode-first Android expense tracker: log expenses and income, split bills with friends, and keep tabs on who owes you — all stored privately on your phone.
 
+**[⬇️ Download the latest APK](https://github.com/tarun337/spendly/releases/latest)** (Android 8.0+). See [Installing on a phone](#installing-on-a-phone).
+
 ## Features
 
 **Expenses & income**
@@ -56,7 +58,7 @@ Requirements: JDK 17+ and the Android SDK (platform 35, build-tools 35).
 
 ## Installing on a phone
 
-Copy the APK to your phone and open it (allow "Install unknown apps" when prompted), or with USB debugging enabled:
+Download the APK from [Releases](https://github.com/tarun337/spendly/releases/latest) on your phone and open it (allow "Install unknown apps" when prompted). To install a build from source with USB debugging enabled:
 
 ```bash
 adb install -r app/build/outputs/apk/release/app-release.apk
