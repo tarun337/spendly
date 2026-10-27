@@ -27,10 +27,17 @@
 - Last-6-months income vs spend trend
 - Optional monthly budget with a per-day allowance for the rest of the month
 
+**Scan bank SMS**
+- One tap on Home finds what you spent from your bank's SMS alerts — today, yesterday, last 7 days, this month, or any date range
+- Works with HDFC, IDFC FIRST, Axis, ICICI, SBI, Kotak, Yes, IndusInd, Federal, AU and most other Indian banks (UPI, debit card, credit card and account debits)
+- Review before saving: edit the note, pick a category (guessed from the payee, and learned from your past choices), untick anything, or add & split
+- Skips OTPs, credits, refunds, reminders and failed payments; ATM withdrawals, card bill payments and own-account transfers are left unticked
+- Never adds the same SMS twice, and warns if you already typed in a matching expense
+
 **Other**
-- History with search (notes, categories, people) and filters (type, split, payment mode, month / all time)
+- History with search (notes, categories, people, amounts) and filters (type, split, payment mode, month / all time)
 - Swipe to delete with undo; duplicate a transaction to repeat a payment
-- Export everything to CSV
+- Export everything to CSV, or import a CSV exported from another expense app
 - Dark (default), light, or system theme; choice of currency symbol
 
 ## Tech stack
@@ -68,16 +75,18 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 
 ```
 app/src/main/java/com/expensemanager/app/
-├── data/            Room entities, DAO, database & migrations, categories, settings
+├── data/            Room entities, DAO, database & migrations, categories, settings, CSV import, bank SMS parser
 └── ui/
     ├── AppRoot.kt       Navigation and bottom bar
-    ├── AppViewModel.kt  State, monthly stats, CSV export
+    ├── AppViewModel.kt  State, monthly stats, CSV export, SMS scan
     ├── Components.kt    Shared UI pieces
     ├── Format.kt        Money / date formatting and input helpers
-    ├── screens/         Home, History, Add/Edit, Splits, People & groups, Settings, contact picker
+    ├── screens/         Home, History, Add/Edit, Splits, People & groups, Settings, Scan bank SMS, contact picker
     └── theme/           Colours and theme
 ```
 
 ## Privacy
 
-All data stays on the device — there is no account, server, or network access. The contacts permission is only requested when you open the people picker, and is used only to list names to split with.
+All data stays on the device — there is no account, server, or network access. The contacts permission is only requested when you open the people picker, and is used only to list names to split with. The SMS permission is only requested when you open Scan bank SMS; messages are read on the phone to find bank spend alerts and are never sent anywhere.
+
+On Android 13+, a sideloaded app may not be allowed to ask for SMS access. If no prompt appears, open App info → ⋮ → **Allow restricted settings**, then Permissions → SMS → Allow.
