@@ -5,11 +5,13 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.expensemanager.app.data.AppDatabase
+import com.expensemanager.app.data.CsvImport
 import com.expensemanager.app.data.Favourite
 import com.expensemanager.app.data.GroupMember
 import com.expensemanager.app.data.GroupWithMembers
 import com.expensemanager.app.data.PeopleGroup
 import com.expensemanager.app.data.Person
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import com.expensemanager.app.data.Prefs
 import com.expensemanager.app.data.Settings
@@ -145,4 +147,45 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         onResult(ok)
     }
+
+    /**
+     * Reads a CSV file and prepares an import without saving anything, so the user can
+     * confirm first. Rows already in the database are dropped (see [CsvImport.withoutExisting]).
+     */
+    fun previewImport(uri: Uri, onResult: (Result<ImportPreview>) -> Unit) = viewModelScope.launch {
+        val existing = dao.observeAll().first().map { it.tx }
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                val text = getApplication<Application>().contentResolver.openInputStream(uri)
+                    ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                    ?: error("Cannot open file")
+                val parsed = CsvImport.parse(text)
+                val fresh = CsvImport.withoutExisting(parsed.transactions, existing)
+                ImportPreview(
+                    toImport = fresh,
+                    duplicates = parsed.transactions.size - fresh.size,
+                    errors = parsed.errors,
+                )
+            }
+        }
+        onResult(result)
+    }
+
+    fun commitImport(preview: ImportPreview, onDone: (Boolean) -> Unit) = viewModelScope.launch {
+        val ok = runCatching { dao.insertTxs(preview.toImport) }.isSuccess
+        onDone(ok)
+    }
+}
+
+data class ImportPreview(
+    val toImport: List<TransactionEntity>,
+    /** Rows skipped because an identical transaction already exists. */
+    val duplicates: Int,
+    /** Rows that couldn't be read, e.g. "Row 12: bad amount". */
+    val errors: List<String>,
+) {
+    val expenses get() = toImport.count { it.type == TxType.EXPENSE.name }
+    val incomes get() = toImport.size - expenses
+    val firstDate: LocalDate? get() = toImport.minOfOrNull { it.date }?.let(LocalDate::ofEpochDay)
+    val lastDate: LocalDate? get() = toImport.maxOfOrNull { it.date }?.let(LocalDate::ofEpochDay)
 }

@@ -22,6 +22,10 @@ interface ExpenseDao {
     @Insert
     suspend fun insertTx(tx: TransactionEntity): Long
 
+    /** Bulk insert used by CSV import (single transaction, so it's fast and all-or-nothing). */
+    @Insert
+    suspend fun insertTxs(txs: List<TransactionEntity>)
+
     @Update
     suspend fun updateTx(tx: TransactionEntity)
 

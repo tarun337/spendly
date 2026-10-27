@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Savings
 import androidx.compose.material.icons.rounded.CurrencyExchange
@@ -50,6 +51,8 @@ import com.expensemanager.app.data.ThemeMode
 import com.expensemanager.app.ui.AppCard
 import com.expensemanager.app.ui.AppViewModel
 import com.expensemanager.app.ui.IconBubble
+import com.expensemanager.app.ui.ImportPreview
+import com.expensemanager.app.ui.label
 import com.expensemanager.app.ui.minorToInput
 import com.expensemanager.app.ui.money
 import com.expensemanager.app.ui.parseMoney
@@ -70,6 +73,14 @@ fun SettingsScreen(vm: AppViewModel, snackbar: SnackbarHostState, onPeople: () -
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         if (uri != null) vm.exportCsv(uri) { ok ->
             scope.launch { snackbar.showSnackbar(if (ok) "Exported ${all.size} transactions" else "Export failed") }
+        }
+    }
+
+    var importPreview by remember { mutableStateOf<ImportPreview?>(null) }
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.previewImport(uri) { res ->
+            res.onSuccess { importPreview = it }
+                .onFailure { e -> scope.launch { snackbar.showSnackbar("Import failed: ${e.message ?: "unreadable file"}") } }
         }
     }
 
@@ -115,10 +126,53 @@ fun SettingsScreen(vm: AppViewModel, snackbar: SnackbarHostState, onPeople: () -
             TextButton(onClick = { exporter.launch("expenses-${LocalDate.now()}.csv") }) { Text("Export") }
         }
 
+        SettingCard(Icons.Rounded.FileUpload, "Import from CSV", "Bring in records exported from another expense app") {
+            TextButton(onClick = {
+                // Some file managers label .csv files as text/plain or octet-stream.
+                importer.launch(arrayOf("text/csv", "text/comma-separated-values", "application/csv", "text/plain", "application/vnd.ms-excel", "application/octet-stream"))
+            }) { Text("Choose file") }
+        }
+
         Spacer(Modifier.height(8.dp))
         Text(
             "All data stays on this device. Tip: swipe left on a transaction in History to delete it, and use Duplicate when editing to repeat a recurring payment.",
             style = MaterialTheme.typography.bodySmall, color = extraColors.subtle,
+        )
+    }
+
+    importPreview?.let { p ->
+        val nothing = p.toImport.isEmpty()
+        AlertDialog(
+            onDismissRequest = { importPreview = null },
+            title = { Text(if (nothing) "Nothing to import" else "Import ${p.toImport.size} transactions?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (!nothing) {
+                        Text("${p.expenses} expenses · ${p.incomes} income")
+                        if (p.firstDate != null && p.lastDate != null) {
+                            Text("${p.firstDate!!.label()} – ${p.lastDate!!.label()}", color = extraColors.subtle)
+                        }
+                    }
+                    if (p.duplicates > 0) Text("${p.duplicates} already in the app — will be skipped", color = extraColors.subtle)
+                    if (p.errors.isNotEmpty()) {
+                        Text("${p.errors.size} rows couldn't be read and will be skipped:", color = MaterialTheme.colorScheme.error)
+                        Text(
+                            p.errors.take(5).joinToString("\n") + if (p.errors.size > 5) "\n…" else "",
+                            style = MaterialTheme.typography.bodySmall, color = extraColors.subtle,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                if (nothing) TextButton(onClick = { importPreview = null }) { Text("OK") }
+                else TextButton(onClick = {
+                    importPreview = null // close first so a double tap can't import twice
+                    vm.commitImport(p) { ok ->
+                        scope.launch { snackbar.showSnackbar(if (ok) "Imported ${p.toImport.size} transactions" else "Import failed") }
+                    }
+                }) { Text("Import") }
+            },
+            dismissButton = if (nothing) null else ({ TextButton(onClick = { importPreview = null }) { Text("Cancel") } }),
         )
     }
 
