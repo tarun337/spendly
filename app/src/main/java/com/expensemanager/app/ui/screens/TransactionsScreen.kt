@@ -57,7 +57,9 @@ import com.expensemanager.app.ui.EmptyState
 import com.expensemanager.app.ui.MonthSwitcher
 import com.expensemanager.app.ui.TransactionRow
 import com.expensemanager.app.ui.key
+import com.expensemanager.app.ui.minorToInput
 import com.expensemanager.app.ui.money
+import com.expensemanager.app.ui.parseMoney
 import com.expensemanager.app.ui.relativeLabel
 import com.expensemanager.app.ui.theme.extraColors
 import kotlinx.coroutines.launch
@@ -82,13 +84,15 @@ fun TransactionsScreen(vm: AppViewModel, snackbar: SnackbarHostState, onAdd: () 
 
     val filtered = remember(all, query, typeFilter, modeFilter, splitOnly, allTime, monthKey) {
         val q = query.trim().lowercase()
+        val amountQ = amountQuery(q)
         all.filter { t ->
             (allTime || t.tx.accountMonth == monthKey) &&
                 (typeFilter == null || t.tx.type == typeFilter) &&
                 (modeFilter == null || t.tx.paymentMode == modeFilter) &&
                 (!splitOnly || t.isSplit) &&
                 (q.isEmpty() || t.tx.note.lowercase().contains(q) || t.tx.category.lowercase().contains(q) ||
-                    t.shares.any { it.personName.lowercase().contains(q) })
+                    t.shares.any { it.personName.lowercase().contains(q) } ||
+                    (amountQ != null && (amountQ.matches(t.tx.amount) || t.shares.any { amountQ.matches(it.amount) })))
         }
     }
     val grouped = remember(filtered) { filtered.groupBy { it.tx.date } }
@@ -123,7 +127,7 @@ fun TransactionsScreen(vm: AppViewModel, snackbar: SnackbarHostState, onAdd: () 
                 OutlinedTextField(
                     value = query, onValueChange = { query = it },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Search notes, categories, people") },
+                    placeholder = { Text("Search note, category, person or amount") },
                     leadingIcon = { Icon(Icons.Rounded.Search, null) },
                     trailingIcon = {
                         if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Rounded.Close, "Clear") }
@@ -207,4 +211,21 @@ fun TransactionsScreen(vm: AppViewModel, snackbar: SnackbarHostState, onAdd: () 
             }
         }
     }
+}
+
+/**
+ * An amount typed into search, e.g. "250", "1,172", "₹1172.06" or "rs 99".
+ * Matches amounts that start with the typed digits, so "250" finds ₹250, ₹250.50 and
+ * ₹2,500 (but not ₹1,250), and keeps narrowing down as more is typed.
+ */
+private class AmountQuery(private val text: String) {
+    private val exact = parseMoney(text)
+
+    fun matches(minor: Long): Boolean = minor == exact || minorToInput(minor).startsWith(text)
+}
+
+/** Returns an [AmountQuery] if [q] looks like an amount, otherwise null. */
+private fun amountQuery(q: String): AmountQuery? {
+    val s = q.removePrefix("₹").removePrefix("rs.").removePrefix("rs").replace(",", "").trim()
+    return if (Regex("""\d+(\.\d{0,2})?""").matches(s)) AmountQuery(s) else null
 }

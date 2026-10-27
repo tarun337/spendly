@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [TransactionEntity::class, SplitShare::class, PeopleGroup::class, GroupMember::class, Favourite::class],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -45,9 +45,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v4 -> v5: remember which bank SMS a transaction was imported from. */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `transactions` ADD COLUMN `smsRef` TEXT")
+            }
+        }
+
         fun get(context: Context): AppDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "expenses.db")
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build().also { instance = it }
         }
     }

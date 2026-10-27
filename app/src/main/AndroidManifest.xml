@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Read bank alerts for "Scan bank SMS". Messages are only read on the phone. -->
+    <uses-permission android:name="android.permission.READ_SMS" />
 
     <application
         android:allowBackup="true"

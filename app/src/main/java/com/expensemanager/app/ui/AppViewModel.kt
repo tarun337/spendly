@@ -19,14 +19,23 @@ import com.expensemanager.app.data.SplitShare
 import com.expensemanager.app.data.TransactionEntity
 import com.expensemanager.app.data.TransactionWithShares
 import com.expensemanager.app.data.TxType
+import com.expensemanager.app.data.SmsParser
+import com.expensemanager.app.data.SmsReader
+import com.expensemanager.app.data.SmsSpend
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneId
 
 data class MonthStats(
     val income: Long,
@@ -175,7 +184,130 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val ok = runCatching { dao.insertTxs(preview.toImport) }.isSuccess
         onDone(ok)
     }
+
+    // ---- Scan bank SMS ----
+
+    private val _smsScan = MutableStateFlow(SmsScan(LocalDate.now(), LocalDate.now()))
+    /** Lives in the ViewModel so the list survives opening a found spend to split it. */
+    val smsScan: StateFlow<SmsScan> = _smsScan.asStateFlow()
+    private var scanJob: Job? = null
+
+    /** Finds bank spends received from [from] to [to] (inclusive) that aren't in the app yet. */
+    fun scanSms(from: LocalDate, to: LocalDate) {
+        scanJob?.cancel()
+        _smsScan.value = SmsScan(from, to, loading = true)
+        scanJob = viewModelScope.launch {
+            val zone = ZoneId.systemDefault()
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val spends = SmsReader.bankSpends(
+                        getApplication(),
+                        from.atStartOfDay(zone).toInstant().toEpochMilli(),
+                        to.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(),
+                    )
+                    Triple(spends, dao.smsRefs().toSet(), dao.observeAll().first().map { it.tx })
+                }
+            }
+            _smsScan.value = result.fold(
+                onSuccess = { (spends, imported, existing) ->
+                    // Reuse the category the user picked last time for the same payee.
+                    val learned = existing.filter { it.type == TxType.EXPENSE.name && it.note.isNotBlank() }
+                        .sortedBy { it.createdAt }
+                        .associate { it.note.lowercase() to it.category }
+                    val fresh = spends.filter { it.ref !in imported }
+                    val items = fresh.sortedByDescending { it.time }.map { s ->
+                        val day = Instant.ofEpochMilli(s.time).atZone(zone).toLocalDate().toEpochDay()
+                        val typedIn = existing.any {
+                            it.smsRef == null && it.type == TxType.EXPENSE.name && it.amount == s.amount && it.date == day
+                        }
+                        val warning = s.transferHint ?: if (typedIn) "You may have added this already" else null
+                        SmsItem(
+                            spend = s,
+                            note = s.merchant,
+                            category = learned[s.merchant.lowercase()] ?: SmsParser.guessCategory(s.merchant),
+                            selected = warning == null,
+                            warning = warning,
+                        )
+                    }
+                    SmsScan(from, to, items = items, alreadyImported = spends.size - fresh.size, done = true)
+                },
+                onFailure = { e ->
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    SmsScan(from, to, error = if (e is SecurityException) "SMS permission is needed" else "Couldn't read messages", done = true)
+                },
+            )
+        }
+    }
+
+    fun updateSmsItem(ref: String, block: (SmsItem) -> SmsItem) {
+        _smsScan.update { s -> s.copy(items = s.items.map { if (it.spend.ref == ref) block(it) else it }) }
+    }
+
+    fun selectAllSms(selected: Boolean) {
+        _smsScan.update { s -> s.copy(items = s.items.map { it.copy(selected = selected) }) }
+    }
+
+    private fun SmsItem.toEntity(): TransactionEntity {
+        val day = Instant.ofEpochMilli(spend.time).atZone(ZoneId.systemDefault()).toLocalDate()
+        return TransactionEntity(
+            type = TxType.EXPENSE.name,
+            amount = spend.amount,
+            category = category,
+            paymentMode = spend.mode.name,
+            note = note.trim().take(80),
+            date = day.toEpochDay(),
+            accountMonth = YearMonth.from(day).key(),
+            createdAt = spend.time,
+            smsRef = spend.ref,
+        )
+    }
+
+    private fun markSaved(refs: Set<String>) {
+        _smsScan.update { s ->
+            s.copy(items = s.items.filter { it.spend.ref !in refs }, alreadyImported = s.alreadyImported + refs.size)
+        }
+    }
+
+    /** Saves the ticked spends. */
+    fun saveSelectedSms(onDone: (Int) -> Unit) = viewModelScope.launch {
+        val picked = _smsScan.value.items.filter { it.selected }
+        if (picked.isEmpty()) return@launch
+        val ok = runCatching { dao.insertTxs(picked.map { it.toEntity() }) }.isSuccess
+        if (ok) markSaved(picked.map { it.spend.ref }.toSet())
+        onDone(if (ok) picked.size else -1)
+    }
+
+    /** Saves one spend straight away and returns its id, so it can be opened to split. */
+    fun saveSmsForSplit(ref: String, onSaved: (Long) -> Unit) = viewModelScope.launch {
+        val item = _smsScan.value.items.firstOrNull { it.spend.ref == ref } ?: return@launch
+        val id = dao.insertTx(item.toEntity())
+        markSaved(setOf(ref))
+        onSaved(id)
+    }
 }
+
+data class SmsItem(
+    val spend: SmsSpend,
+    val note: String,
+    val category: String,
+    /** Ticked = will be added. */
+    val selected: Boolean,
+    /** Why it's unticked by default, e.g. a cash withdrawal or something typed in already. */
+    val warning: String?,
+)
+
+data class SmsScan(
+    val from: LocalDate,
+    val to: LocalDate,
+    val loading: Boolean = false,
+    /** New spends found, newest first. */
+    val items: List<SmsItem> = emptyList(),
+    /** Spends in the period that were already added from SMS earlier. */
+    val alreadyImported: Int = 0,
+    val error: String? = null,
+    /** A scan has finished (so an empty list means "nothing found"). */
+    val done: Boolean = false,
+)
 
 data class ImportPreview(
     val toImport: List<TransactionEntity>,

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -324,6 +325,8 @@ fun AddEditScreen(
             accountMonth = month.key(),
             createdAt = if (isEdit) createdAt else System.currentTimeMillis(),
             groupId = groupId,
+            // Keep the link to the source SMS so a rescan doesn't offer it again.
+            smsRef = if (isEdit) original?.tx?.smsRef else null,
         )
         val shares = if (splitOn && type == TxType.EXPENSE) {
             others.mapNotNull { p ->
@@ -350,6 +353,9 @@ fun AddEditScreen(
     val accent = if (type == TxType.EXPENSE) extraColors.expense else extraColors.income
 
     Scaffold(
+        // Shrink above the keyboard so the field being typed in (e.g. a split share)
+        // scrolls into view instead of being hidden behind it.
+        modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
                 title = {

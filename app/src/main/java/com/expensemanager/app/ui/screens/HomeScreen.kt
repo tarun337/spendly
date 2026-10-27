@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.Payments
 import androidx.compose.material.icons.rounded.AccountBalance
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.ReceiptLong
+import androidx.compose.material.icons.rounded.Sms
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -90,6 +91,7 @@ fun HomeScreen(
     onOpen: (Long) -> Unit,
     onSeeAll: () -> Unit,
     onSplits: () -> Unit,
+    onScanSms: () -> Unit,
 ) {
     val all by vm.transactions.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
@@ -126,6 +128,20 @@ fun HomeScreen(
             }
 
             item { SummaryCard(stats.income, stats.expense, stats.pendingSplits, cur, onAdd) }
+
+            item {
+                AppCard(onClick = onScanSms) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBubble(Icons.Rounded.Sms, MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Scan bank SMS", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            Text("Add spends from your bank messages", style = MaterialTheme.typography.bodySmall, color = extraColors.subtle)
+                        }
+                        Icon(Icons.Rounded.ChevronRight, null, tint = extraColors.subtle)
+                    }
+                }
+            }
 
             if (settings.monthlyBudget > 0) {
                 item { BudgetCard(stats.expense, settings.monthlyBudget, month, cur) }

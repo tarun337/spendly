@@ -42,6 +42,8 @@ data class TransactionEntity(
     val createdAt: Long = System.currentTimeMillis(),
     /** Saved group this split was made for (e.g. Flatmates); null if none. */
     val groupId: Long? = null,
+    /** Id of the bank SMS this was imported from (see [SmsSpend.ref]); null if entered by hand. */
+    val smsRef: String? = null,
 )
 
 /** A share of a split expense owed by another person. */

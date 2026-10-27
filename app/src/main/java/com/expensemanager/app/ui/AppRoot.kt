@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -41,6 +42,7 @@ import com.expensemanager.app.ui.screens.AddEditScreen
 import com.expensemanager.app.ui.screens.HomeScreen
 import com.expensemanager.app.ui.screens.PeopleScreen
 import com.expensemanager.app.ui.screens.SettingsScreen
+import com.expensemanager.app.ui.screens.SmsImportScreen
 import com.expensemanager.app.ui.screens.SplitsScreen
 import com.expensemanager.app.ui.screens.TransactionsScreen
 
@@ -66,6 +68,13 @@ fun AppRoot(vm: AppViewModel) {
     val backStack by nav.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
     val showBar = tabs.any { it.route == current }
+    // Snackbars live here, but the + button / bottom action bar belong to each screen,
+    // so lift the snackbar above them instead of covering them.
+    val snackbarLift = when (current) {
+        "home", "transactions" -> 80.dp
+        "sms" -> 76.dp
+        else -> 0.dp
+    }
 
     /**
      * Single way of switching tabs, used by the bottom bar and by in-screen shortcuts
@@ -84,7 +93,7 @@ fun AppRoot(vm: AppViewModel) {
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { SnackbarHost(snackbar, Modifier.padding(bottom = snackbarLift)) },
         bottomBar = {
             if (showBar) {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
@@ -114,7 +123,16 @@ fun AppRoot(vm: AppViewModel) {
                 HomeScreen(vm, onAdd = { nav.navigate(editRoute(type = it)) },
                     onOpen = { nav.navigate(editRoute(it)) },
                     onSeeAll = { goToTab("transactions") },
-                    onSplits = { goToTab("splits") })
+                    onSplits = { goToTab("splits") },
+                    onScanSms = { nav.navigate("sms") })
+            }
+            composable("sms") {
+                SmsImportScreen(
+                    vm,
+                    onBack = { nav.popBackStack() },
+                    onSplit = { id -> nav.navigate(editRoute(id)) },
+                    onMessage = { msg -> rootScope.launch { snackbar.currentSnackbarData?.dismiss(); snackbar.showSnackbar(msg) } },
+                )
             }
             composable("transactions") {
                 TransactionsScreen(vm, snackbar, onAdd = { nav.navigate(editRoute()) }, onOpen = { nav.navigate(editRoute(it)) })

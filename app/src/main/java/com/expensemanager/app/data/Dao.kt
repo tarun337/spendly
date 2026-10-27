@@ -26,6 +26,10 @@ interface ExpenseDao {
     @Insert
     suspend fun insertTxs(txs: List<TransactionEntity>)
 
+    /** SMS already imported, so a rescan doesn't offer them again. */
+    @Query("SELECT smsRef FROM transactions WHERE smsRef IS NOT NULL")
+    suspend fun smsRefs(): List<String>
+
     @Update
     suspend fun updateTx(tx: TransactionEntity)
 
