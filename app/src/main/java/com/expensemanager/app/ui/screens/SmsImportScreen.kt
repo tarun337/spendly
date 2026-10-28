@@ -23,11 +23,9 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -66,6 +64,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -330,6 +329,7 @@ private fun RangeChips(from: LocalDate, to: LocalDate, onPick: (LocalDate, Local
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SmsItemCard(item: SmsItem, cur: String, onChange: ((SmsItem) -> SmsItem) -> Unit, onSplit: () -> Unit) {
     val s = item.spend
@@ -380,16 +380,44 @@ private fun SmsItemCard(item: SmsItem, cur: String, onChange: ((SmsItem) -> SmsI
             shape = MaterialTheme.shapes.medium,
         )
         Spacer(Modifier.height(10.dp))
+        // Show the chosen category compactly; tap to open every category wrapped over several lines.
         val cats = Categories.forType(TxType.EXPENSE)
-        val listState = rememberLazyListState(initialFirstVisibleItemIndex = cats.indexOfFirst { it.name == item.category }.coerceAtLeast(0))
-        LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            itemsIndexed(cats, key = { _, c -> c.name }) { _, c ->
-                FilterChip(
-                    selected = c.name == item.category,
-                    onClick = { onChange { it.copy(category = c.name) } },
-                    label = { Text(c.name) },
-                    leadingIcon = { Icon(c.icon, null, Modifier.size(18.dp), tint = c.color) },
+        val current = cats.firstOrNull { it.name == item.category } ?: cats.last()
+        var pickCat by rememberSaveable(s.ref) { mutableStateOf(false) }
+        Surface(
+            onClick = { pickCat = !pickCat },
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            color = Color.Transparent,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        ) {
+            Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(current.icon, null, Modifier.size(20.dp), tint = current.color)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Category", style = MaterialTheme.typography.labelSmall, color = extraColors.subtle)
+                    Text(current.name, style = MaterialTheme.typography.bodyLarge)
+                }
+                Icon(
+                    if (pickCat) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    if (pickCat) "Hide categories" else "Change category",
                 )
+            }
+        }
+        if (pickCat) {
+            Spacer(Modifier.height(6.dp))
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                cats.forEach { c ->
+                    FilterChip(
+                        selected = c.name == item.category,
+                        onClick = {
+                            onChange { it.copy(category = c.name) }
+                            pickCat = false
+                        },
+                        label = { Text(c.name) },
+                        leadingIcon = { Icon(c.icon, null, Modifier.size(18.dp), tint = c.color) },
+                    )
+                }
             }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
